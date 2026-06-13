@@ -68,6 +68,23 @@ main.wrap { padding-top: 28px; padding-bottom: 60px; }
   font-size: .92rem;
 }
 
+/* Keyword panel */
+.keyword-panel {
+  margin-top: 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  box-shadow: var(--shadow);
+}
+.keyword-label { display: block; font-weight: 600; margin-bottom: 8px; }
+.keyword-input {
+  width: 100%; font: inherit; padding: 10px 12px;
+  border: 1px solid #b9c6cf; border-radius: 8px; box-sizing: border-box;
+}
+.keyword-input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+.keyword-hint { margin: 8px 0 0; color: var(--muted); font-size: .85rem; }
+
 /* Results */
 .results { margin-top: 26px; }
 .results-bar {
@@ -110,6 +127,10 @@ main.wrap { padding-top: 28px; padding-bottom: 60px; }
 .muted { color: var(--muted); }
 .col-actions { white-space: nowrap; }
 .col-actions .link-btn { margin-right: 10px; font-size: .9rem; }
+
+/* Keyword match column is only shown once a keyword search is active */
+.results-table .col-matches { display: none; }
+.results-table.show-matches .col-matches { display: table-cell; white-space: nowrap; }
 
 .chip {
   display: inline-block;

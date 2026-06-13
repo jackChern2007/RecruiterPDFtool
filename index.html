@@ -31,10 +31,12 @@
   <main class="wrap">
     <section id="dropzone" class="dropzone" tabindex="0" aria-label="Upload LinkedIn Recruiter PDF files">
       <input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden />
+      <input type="file" id="importInput" accept=".xlsx,.xls" hidden />
       <div class="dropzone-inner">
         <div class="dz-icon" aria-hidden="true">⬆️</div>
         <p class="dz-title">Drop LinkedIn Recruiter PDFs here</p>
         <p class="dz-sub">or <button type="button" id="browseBtn" class="link-btn">browse your files</button> — you can select several at once</p>
+        <p class="dz-sub">Already exported before? <button type="button" id="importBtn" class="link-btn">Import an Excel file</button> to load those candidates back in</p>
       </div>
     </section>
 
@@ -42,6 +44,16 @@
       🔒 <strong>Private by design.</strong> Your PDFs are parsed locally in your browser.
       Nothing is uploaded to any server.
     </p>
+
+    <section id="keywordPanel" class="keyword-panel">
+      <label for="keywordInput" class="keyword-label">Keyword search</label>
+      <input type="text" id="keywordInput" class="keyword-input" placeholder="e.g. Python, AWS, Spanish, PMP" />
+      <p class="keyword-hint">
+        Comma-separated. Candidates are ranked by how many of these appear in their
+        skills, languages, certifications, experience, education and summary —
+        both in the table below and in the exported workbook.
+      </p>
+    </section>
 
     <section id="results" class="results hidden" aria-live="polite">
       <div class="results-bar">
@@ -57,6 +69,7 @@
           <thead>
             <tr>
               <th>Name</th>
+              <th class="col-matches">Matches</th>
               <th>Current Role</th>
               <th>Location</th>
               <th>Top Skills</th>

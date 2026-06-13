@@ -7,7 +7,10 @@
 (function () {
   'use strict';
 
-  var candidates = []; // parsed results, in upload order
+  var candidates = []; // parsed results
+  var nextOrder = 0;   // assigns a stable upload/import order to each candidate
+  var keywords = [];   // current keyword search terms
+  var keywordTimer = null;
 
   var els = {};
 
@@ -16,7 +19,11 @@
       dropzone: document.getElementById('dropzone'),
       fileInput: document.getElementById('fileInput'),
       browseBtn: document.getElementById('browseBtn'),
+      importBtn: document.getElementById('importBtn'),
+      importInput: document.getElementById('importInput'),
+      keywordInput: document.getElementById('keywordInput'),
       results: document.getElementById('results'),
+      resultsTable: document.getElementById('resultsTable'),
       resultsBody: document.getElementById('resultsBody'),
       resultsCount: document.getElementById('resultsCount'),
       downloadBtn: document.getElementById('downloadBtn'),
@@ -58,8 +65,9 @@
 
   function wireEvents() {
     els.browseBtn.addEventListener('click', function () { els.fileInput.click(); });
+    els.importBtn.addEventListener('click', function () { els.importInput.click(); });
     els.dropzone.addEventListener('click', function (e) {
-      if (e.target === els.browseBtn) return;
+      if (e.target === els.browseBtn || e.target === els.importBtn) return;
       els.fileInput.click();
     });
     els.dropzone.addEventListener('keydown', function (e) {
@@ -68,6 +76,21 @@
     els.fileInput.addEventListener('change', function () {
       handleFiles(els.fileInput.files);
       els.fileInput.value = '';
+    });
+
+    els.importInput.addEventListener('change', function () {
+      if (els.importInput.files && els.importInput.files[0]) {
+        importExcel(els.importInput.files[0]);
+      }
+      els.importInput.value = '';
+    });
+
+    els.keywordInput.addEventListener('input', function () {
+      clearTimeout(keywordTimer);
+      keywordTimer = setTimeout(function () {
+        keywords = parseKeywords(els.keywordInput.value);
+        render();
+      }, 200);
     });
 
     ['dragenter', 'dragover'].forEach(function (evt) {
@@ -118,9 +141,9 @@
       var file = queue.shift();
       setBusy(true, 'Parsing ' + (processed + 1) + '/' + total + ' — ' + file.name);
       parseFile(file).then(function (candidate) {
-        candidates.push(candidate);
+        addCandidate(candidate);
       }).catch(function (err) {
-        candidates.push({
+        addCandidate({
           sourceFile: file.name,
           name: '',
           topSkills: [], languages: [], certifications: [], honorsAwards: [],
@@ -143,18 +166,81 @@
   }
 
   function render() {
+    applySort();
+
     var hasAny = candidates.length > 0;
     els.results.classList.toggle('hidden', !hasAny);
     els.emptyHelp.classList.toggle('hidden', hasAny);
     els.downloadBtn.disabled = !hasAny;
+    els.resultsTable.classList.toggle('show-matches', keywords.length > 0);
 
     var ok = candidates.filter(function (c) { return !c.parseError && c.name; }).length;
-    els.resultsCount.textContent = candidates.length + ' file' +
+    var countText = candidates.length + ' file' +
       (candidates.length === 1 ? '' : 's') + ' · ' + ok + ' parsed cleanly';
+    if (keywords.length) countText += ' · sorted by keyword matches';
+    els.resultsCount.textContent = countText;
 
     els.resultsBody.innerHTML = '';
     candidates.forEach(function (c, idx) {
       els.resultsBody.appendChild(buildRow(c, idx));
+    });
+  }
+
+  // ---- Candidate bookkeeping & keyword search ------------------------------
+
+  function addCandidate(c) {
+    c._order = nextOrder++;
+    candidates.push(c);
+  }
+
+  function parseKeywords(raw) {
+    var seen = {};
+    var out = [];
+    (raw || '').split(',').forEach(function (k) {
+      var t = k.trim();
+      if (!t) return;
+      var key = t.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = 1;
+      out.push(t);
+    });
+    return out;
+  }
+
+  // Flattens everything searchable about a candidate into one lowercase string.
+  function buildSearchText(c) {
+    var parts = [c.headline, c.summary, c.currentTitle, c.currentCompany, c.location]
+      .concat(c.topSkills || [], c.languages || [], c.certifications || [], c.honorsAwards || []);
+    (c.experience || []).forEach(function (e) {
+      parts.push(e.title, e.company, e.location);
+      parts = parts.concat(e.description || []);
+    });
+    (c.education || []).forEach(function (e) {
+      parts.push(e.school, e.degree);
+    });
+    return parts.filter(Boolean).join(' \n ').toLowerCase();
+  }
+
+  function computeKeywordMatches(c, kws) {
+    if (!kws.length) return { count: 0, matched: [] };
+    var text = buildSearchText(c);
+    var matched = kws.filter(function (k) { return text.indexOf(k.toLowerCase()) !== -1; });
+    return { count: matched.length, matched: matched };
+  }
+
+  // Recomputes keyword-match counts and (when a search is active) sorts
+  // candidates by match count, falling back to upload/import order.
+  function applySort() {
+    candidates.forEach(function (c) {
+      var m = computeKeywordMatches(c, keywords);
+      c._keywordMatchCount = m.count;
+      c._matchedKeywords = m.matched;
+    });
+    candidates.sort(function (a, b) {
+      if (keywords.length && b._keywordMatchCount !== a._keywordMatchCount) {
+        return b._keywordMatchCount - a._keywordMatchCount;
+      }
+      return a._order - b._order;
     });
   }
 
@@ -165,6 +251,7 @@
     var role = [c.currentTitle, c.currentCompany].filter(Boolean).join(' @ ');
 
     tr.appendChild(cell(c.name || '(name not found)', c.name ? '' : 'muted'));
+    tr.appendChild(matchesCell(c));
     tr.appendChild(cell(role));
     tr.appendChild(cell(c.location || ''));
     tr.appendChild(chipCell(c.topSkills));
@@ -194,6 +281,16 @@
     var td = document.createElement('td');
     if (cls) td.className = cls;
     td.textContent = text;
+    return td;
+  }
+
+  function matchesCell(c) {
+    var td = document.createElement('td');
+    td.className = 'col-matches';
+    if (keywords.length) {
+      td.textContent = (c._keywordMatchCount || 0) + ' / ' + keywords.length;
+      if (c._matchedKeywords && c._matchedKeywords.length) td.title = c._matchedKeywords.join(', ');
+    }
     return td;
   }
 
@@ -272,7 +369,7 @@
   function onDownload() {
     if (!candidates.length) return;
     try {
-      window.ExcelExport.download(candidates);
+      window.ExcelExport.download(candidates, undefined, keywords.length > 0);
       toast('Excel file downloaded.');
     } catch (err) {
       toast('Export failed: ' + (err && err.message ? err.message : err));
@@ -282,6 +379,112 @@
   function onClear() {
     candidates = [];
     render();
+  }
+
+  // ---- Import a previously-exported workbook -------------------------------
+
+  function importExcel(file) {
+    if (!window.XLSX) { toast('XLSX library failed to load.'); return; }
+    setBusy(true, 'Importing ' + file.name + '…');
+    file.arrayBuffer().then(function (buf) {
+      var wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+      var candSheet = wb.Sheets['Candidates'];
+      if (!candSheet) {
+        throw new Error('No "Candidates" sheet found — is this a workbook exported from this tool?');
+      }
+      var candRows = XLSX.utils.sheet_to_json(candSheet, { defval: '' });
+      var expRows = wb.Sheets['Experience'] ? XLSX.utils.sheet_to_json(wb.Sheets['Experience'], { defval: '' }) : [];
+      var skillRows = wb.Sheets['Skills'] ? XLSX.utils.sheet_to_json(wb.Sheets['Skills'], { defval: '' }) : [];
+
+      var imported = candRows
+        .map(function (row) { return candidateFromRow(row, expRows, skillRows); })
+        .filter(function (c) { return c.name; });
+
+      if (!imported.length) {
+        throw new Error('No candidates found in "' + file.name + '".');
+      }
+
+      imported.forEach(addCandidate);
+      setBusy(false);
+      render();
+      toast('Imported ' + imported.length + ' candidate' + (imported.length === 1 ? '' : 's') + ' from ' + file.name + '.');
+    }).catch(function (err) {
+      setBusy(false);
+      toast('Import failed: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  // Matches an Experience/Skills sheet row back to its Candidates sheet row.
+  function rowKey(name, sourceFile) {
+    return (name || '') + ' ' + (sourceFile || '');
+  }
+
+  // Reverses formatDuration()/formatMonths(), e.g. "2 yrs 3 mos" -> 27.
+  function parseDurationMonths(text) {
+    text = (text || '').toString();
+    var years = 0, months = 0;
+    var ym = text.match(/(\d+)\s*yrs?/i);
+    if (ym) years = parseInt(ym[1], 10);
+    var mm = text.match(/(\d+)\s*mos?/i);
+    if (mm) months = parseInt(mm[1], 10);
+    return years * 12 + months;
+  }
+
+  function candidateFromRow(row, expRows, skillRows) {
+    var name = (row['Name'] || '').toString().trim();
+    var sourceFile = (row['Source File'] || '').toString();
+    var key = rowKey(name, sourceFile);
+
+    var experience = expRows
+      .filter(function (r) { return rowKey(r['Candidate'], r['Source File']) === key; })
+      .map(function (r) {
+        return {
+          company: r['Company'] || '',
+          title: r['Title'] || '',
+          period: r['Period'] || '',
+          location: r['Location'] || '',
+          description: (r['Description'] || '').toString().split('\n')
+            .map(function (d) { return d.replace(/^[•]\s*/, '').trim(); })
+            .filter(Boolean),
+          durationMonths: parseDurationMonths(r['Duration'])
+        };
+      });
+
+    var topSkills = [], languages = [], certifications = [];
+    skillRows
+      .filter(function (r) { return rowKey(r['Candidate'], r['Source File']) === key; })
+      .forEach(function (r) {
+        var value = (r['Value'] || '').toString();
+        if (!value) return;
+        if (r['Type'] === 'Top Skill') topSkills.push(value);
+        else if (r['Type'] === 'Language') languages.push(value);
+        else if (r['Type'] === 'Certification') certifications.push(value);
+      });
+
+    return {
+      sourceFile: sourceFile,
+      name: name,
+      headline: row['Headline'] || '',
+      location: row['Location'] || '',
+      linkedinUrl: row['LinkedIn URL'] || '',
+      email: row['Email'] || '',
+      phone: row['Phone'] || '',
+      currentTitle: row['Current Title'] || '',
+      currentCompany: row['Current Company'] || '',
+      topSkills: topSkills,
+      languages: languages,
+      certifications: certifications,
+      honorsAwards: [],
+      summary: row['Summary'] || '',
+      experience: experience,
+      education: row['Education'] ? [{ school: row['Education'], degree: '', period: '' }] : [],
+      totalExperienceMonths: experience.reduce(function (s, e) { return s + (e.durationMonths || 0); }, 0),
+      totalExperienceText: row['Experience (approx.)'] || '',
+      viewedDate: row['Date Viewed'] || '',
+      viewedBy: '',
+      warnings: row['Parse Notes'] ? [String(row['Parse Notes'])] : [],
+      imported: true
+    };
   }
 
   function setBusy(busy, message) {

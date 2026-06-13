@@ -41,43 +41,54 @@
     }).filter(Boolean).join('  |  ');
   }
 
-  function buildCandidatesSheet(candidates) {
+  function buildCandidatesSheet(candidates, keywordsActive) {
     var rows = candidates.map(function (c) {
-      return {
-        'Name': c.name || '',
-        'Headline': c.headline || '',
-        'Location': c.location || '',
-        'Current Title': c.currentTitle || '',
-        'Current Company': c.currentCompany || '',
-        'Top Skills': joinList(c.topSkills),
-        'Languages': joinList(c.languages),
-        'Certifications': joinList(c.certifications),
-        'Experience (approx.)': c.totalExperienceText || '',
-        'Education': educationSummary(c.education),
-        'Experience': experienceSummary(c.experience),
-        'Summary': c.summary || '',
-        'LinkedIn URL': c.linkedinUrl || '',
-        'Email': c.email || '',
-        'Phone': c.phone || '',
-        'Date Viewed': c.viewedDate || '',
-        'Source File': c.sourceFile || '',
-        'Parse Notes': (c.warnings || []).join(' ')
-      };
+      var row = { 'Name': c.name || '' };
+      if (keywordsActive) {
+        row['Keyword Matches'] = c._keywordMatchCount || 0;
+        row['Matched Keywords'] = joinList(c._matchedKeywords);
+      }
+      row['Headline'] = c.headline || '';
+      row['Location'] = c.location || '';
+      row['Current Title'] = c.currentTitle || '';
+      row['Current Company'] = c.currentCompany || '';
+      row['Top Skills'] = joinList(c.topSkills);
+      row['Languages'] = joinList(c.languages);
+      row['Certifications'] = joinList(c.certifications);
+      row['Experience (approx.)'] = c.totalExperienceText || '';
+      row['Education'] = educationSummary(c.education);
+      row['Experience'] = experienceSummary(c.experience);
+      row['Summary'] = c.summary || '';
+      row['LinkedIn URL'] = c.linkedinUrl || '';
+      row['Email'] = c.email || '';
+      row['Phone'] = c.phone || '';
+      row['Date Viewed'] = c.viewedDate || '';
+      row['Source File'] = c.sourceFile || '';
+      row['Parse Notes'] = (c.warnings || []).join(' ');
+      return row;
     });
-    var ws = XLSX.utils.json_to_sheet(rows, {
-      header: [
-        'Name', 'Headline', 'Location', 'Current Title', 'Current Company',
-        'Top Skills', 'Languages', 'Certifications', 'Experience (approx.)',
-        'Education', 'Experience', 'Summary', 'LinkedIn URL', 'Email', 'Phone',
-        'Date Viewed', 'Source File', 'Parse Notes'
-      ]
-    });
-    ws['!cols'] = [
-      { wch: 22 }, { wch: 40 }, { wch: 24 }, { wch: 26 }, { wch: 22 },
+
+    var header = ['Name'];
+    var colWidths = [{ wch: 22 }];
+    if (keywordsActive) {
+      header.push('Keyword Matches', 'Matched Keywords');
+      colWidths.push({ wch: 14 }, { wch: 34 });
+    }
+    header = header.concat([
+      'Headline', 'Location', 'Current Title', 'Current Company',
+      'Top Skills', 'Languages', 'Certifications', 'Experience (approx.)',
+      'Education', 'Experience', 'Summary', 'LinkedIn URL', 'Email', 'Phone',
+      'Date Viewed', 'Source File', 'Parse Notes'
+    ]);
+    colWidths = colWidths.concat([
+      { wch: 40 }, { wch: 24 }, { wch: 26 }, { wch: 22 },
       { wch: 34 }, { wch: 20 }, { wch: 34 }, { wch: 16 }, { wch: 50 },
       { wch: 60 }, { wch: 70 }, { wch: 38 }, { wch: 26 }, { wch: 18 },
       { wch: 14 }, { wch: 26 }, { wch: 40 }
-    ];
+    ]);
+
+    var ws = XLSX.utils.json_to_sheet(rows, { header: header });
+    ws['!cols'] = colWidths;
     ws['!autofilter'] = { ref: ws['!ref'] };
     return ws;
   }
@@ -148,10 +159,10 @@
     return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes());
   }
 
-  function download(candidates, fileName) {
+  function download(candidates, fileName, keywordsActive) {
     if (!window.XLSX) throw new Error('XLSX library failed to load.');
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, buildCandidatesSheet(candidates), 'Candidates');
+    XLSX.utils.book_append_sheet(wb, buildCandidatesSheet(candidates, keywordsActive), 'Candidates');
     XLSX.utils.book_append_sheet(wb, buildExperienceSheet(candidates), 'Experience');
     XLSX.utils.book_append_sheet(wb, buildSkillsSheet(candidates), 'Skills');
     var name = fileName || ('linkedin-candidates-' + timestamp() + '.xlsx');
