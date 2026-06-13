@@ -1,0 +1,16 @@
+# Local sample PDFs — never commit candidate data (PII)
+samples/
+*.pdf
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node (only used for the optional local parser test)
+node_modules/
+npm-debug.log*
+
+# Test output
+test/out.xlsx
